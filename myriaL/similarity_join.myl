@@ -1,0 +1,28 @@
+-- Load the data
+c = LOAD("https://raw.githubusercontent.com/acannistra/myria_similarity/master/data/cora/cora.txt",
+            csv(schema(unknown:string,
+            		   pubid:string,
+                       author:string,
+                       volume:string,
+                       title:string,
+                       institute:string,
+                       venue:string,
+                       address:string,
+                       pub:string,
+                       yr:string, -- "year" is a reserved keyword
+                       pages:string,
+                       editor:string,
+                       note:string,
+                       mnth:string, -- "month" is a reserved keyword
+                       emptycol:string),
+                skip=0, delimiter="\t"));
+
+-- Assign sequential ids
+APPLY counter() {
+  [0 AS c];
+  [c + 1];
+  c;
+};
+Cora = [FROM c EMIT counter() as recordid, pubid, author, volume, title, institute, venue, address, pub, yr, pages, editor, note, mnth];
+STORE (Cora, Cora);
+
