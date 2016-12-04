@@ -37,7 +37,7 @@ c = LOAD("https://raw.githubusercontent.com/acannistra/myria_similarity/master/d
 APPLY counter() {
 -- function from MyriaL language docs
 -- WARNING: every partition creates its 
--- own state (i.e. restarts the count)
+-- own state (i.e. restarts the count) 
   [0 AS c];
   [c + 1];
   c;
@@ -93,5 +93,8 @@ HashesByRecord = SELECT d.recordid, h.ngram, h.hashFnNo, h.hashVal
 -- Compute the MinHash signature matrix.
 -- Goal: find the minimum value produced by any hash for a given ngram of a given record.
 --       In other words, find (recordid, hashFnNo) pairs with the lowest hashVal
-SignatureMatrix = empty(nrecordid:int, hashFnNo:int, minHashVal:int);
+-- Schema: SignatureMatrix = empty(nrecordid:int, hashFnNo:int, minHashVal:int);
 
+SignatureMatrix = SELECT recordid, hashFnNo, MIN(hashVal) as minHashVal
+                  FROM HashesByRecord
+                  GROUP BY (recordid, hashFnNo)
