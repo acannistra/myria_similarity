@@ -53,12 +53,12 @@ Data = scan(Cora);
 -- TODO: I've searched through the raco code on github and cannot figure out 
 --       how to apply this to all the columns. Leaving it for the time being.
 --       Raco on github: https://github.com/uwescience/raco
-RelationNgrams = SELECT recordid, ngram(Data.author, 5) as ngram FROM Data;
+RelationNgrams = SELECT recordid, ngram(Data.author, 5) as ng FROM Data;
 store(RelationNgrams, RelationNgrams);
 
 -- Compute the unique set of ngrams
 -- Goal: rather than compute all possible ngrams, just store/use the ones present in the data
-ObservedNgrams = SELECT DISTINCT r.ngram, counter() from RelationNgrams as r;
+ObservedNgrams = SELECT DISTINCT r.ng, counter() from RelationNgrams as r;
 store(ObservedNgrams, ObservedNgrams);
 
 -- Generate a set of hash functions by defining the coefficients
@@ -81,20 +81,36 @@ def hash(x, a, b): a*x + b;
 
 -- Compute the hash values for all ngrams for all hash functions
 -- Goal: each hash function is computed for each ngram with the result stored here.
-HashesOfNgrams = empty(ngram:string, hashFnNo:int, hashVal:int); -- defining the schema for my own brain
+HashesOfNgrams = empty(ng:string, hashFnNo:int, hashVal:int); -- defining the schema for my own brain
 
 -- Join the hash computation with the records
 -- Goal: each (record, ngram) pair gets matched with its associated hashFnNo and hashVal
 -- HashesByRecord = empty(recordid:int, ngram:string, hashFnNo:int, hashVal:int); 
-HashesByRecord = SELECT d.recordid, h.ngram, h.hashFnNo, h.hashVal 
+HashesByRecord = SELECT d.recordid, h.ng, h.hashFnNo, h.hashVal 
                  FROM Data d, HashesOfNgrams h
-                 WHERE d.ngram = h.ngram;
+                 WHERE d.ng = h.ng;
 
 -- Compute the MinHash signature matrix.
 -- Goal: find the minimum value produced by any hash for a given ngram of a given record.
 --       In other words, find (recordid, hashFnNo) pairs with the lowest hashVal
 -- Schema: SignatureMatrix = empty(nrecordid:int, hashFnNo:int, minHashVal:int);
 
-SignatureMatrix = SELECT recordid, hashFnNo, MIN(hashVal) as minHashVal
-                  FROM HashesByRecord
-                  GROUP BY (recordid, hashFnNo)
+SignatureMatrix = [from HashesByRecord 
+                   emit recordid, hashFnNo, min(hashVal) as minHashVal];
+
+STORE(SignatureMatrix, SignatureMatrix);
+
+-- Compute the LSH matrix 
+-- Goal: partition the signature matrix into m groups of k hash functions
+
+-- TODO: create map from hashfnno -> band
+bandMap = empty(hashFnNo:int, bandNo:int);
+
+
+--LSHMatrix = empty(recordid:int, bandNo:int, hashFnNo:int, minHashVal:int);
+LSHMatrix = select sm.recordid, bm.bandno, sm.hashFnNo, sm.minHashVal 
+            from SignatureMatrix sm, bandMap bm
+            where sm.HashFnNo = bm.hashFnNo;
+
+
+
