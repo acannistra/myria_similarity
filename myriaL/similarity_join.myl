@@ -1,17 +1,3 @@
--- Before you work on this, here are some fun discoveries:
---     - there is no random number generator implemented for myriaL
---         - this is a problem for generating the minhash coefficients table
---         - can be done in a roundabout way by sampling from a table of #s 
---           via samplescan(), but we should (gulp) probably implement one
---           in raco directly(?)
---     - I cannot find a way to natively apply a function to all columns w/o 
---       knowing how many there are
---         - Columns can be accessed by position instead of name (e.g. $0 
---           for the first column), so if we can return the number of cols, 
---           we can easily make a UDF to loop over all of them (for kmers)
---     - Unsure how to compute the hash of the kmers since they are non-numeric
---       and coming up with ids for them is proving to be difficult
-
 -- Load the data
 c = LOAD("https://raw.githubusercontent.com/acannistra/myria_similarity/master/data/cora/cora.txt",
             csv(schema(unknown:string,
@@ -50,67 +36,76 @@ STORE (Cora, Cora);
 -- Compute ngrams with n=5
 -- Goal: for each record, get ngrams for each field and add them to the table of (recordid, ngram) pairs
 Data = scan(Cora);
--- TODO: I've searched through the raco code on github and cannot figure out 
---       how to apply this to all the columns. Leaving it for the time being.
---       Raco on github: https://github.com/uwescience/raco
+
 RelationNgrams = SELECT recordid, ngram(Data.author, 5) as ng FROM Data;
 store(RelationNgrams, RelationNgrams);
 
 -- Compute the unique set of ngrams
 -- Goal: rather than compute all possible ngrams, just store/use the ones present in the data
-ObservedNgrams = SELECT DISTINCT r.ng, counter() from RelationNgrams as r;
+ObservedNgrams = SELECT DISTINCT r.ng from RelationNgrams as r;
 store(ObservedNgrams, ObservedNgrams);
 
 -- Generate a set of hash functions by defining the coefficients
 -- Goal: generate random integer coefficients for a predetermined number of hash functions
-MinHashCoefs = empty(hashFnNo:int, a:int, b:int); -- need to find a way to randomly generate this
+MinHashCoefs = load("http://homes.cs.washington.edu/~kdorosch/hash_fns_84.txt", csv(schema(hashFnNo:int, a:int, b:int),
+                skip=0, delimiter="\t"));
 STORE(MinHashCoefs, MinHashCoefs);
-
----- messy af, playing around with generating coeffs by just stealing the recordids from cora
-numbers = select recordid from Data;
-store(numbers, Numbers); -- have to save it because samplescan has to pull from a saved Dataset
-a_temp = samplescan(Numbers, 100);
-a = [from a_temp emit counter() as c, recordid as coef];
-b_temp = samplescan(Numbers, 100);
-b = [from b_temp emit counter() as c, recordid as coef];
--- MinHashCoefs = [from a, b where a.coef = b.coef emit counter() as hashFnNo, a.coef as a, b.coef as b]; -- saved because this does not produce correct results. it seems to do some partitioning, making counter() fail
-MinHashCoefs = SELECT a.coef as a, b.coef as b FROM a, b WHERE a.c = b.c;
 
 -- Define the udf for computing a given minhash based on coeffs
 def hash(x, a, b): a*x + b;
 
 -- Compute the hash values for all ngrams for all hash functions
 -- Goal: each hash function is computed for each ngram with the result stored here.
-HashesOfNgrams = empty(ng:string, hashFnNo:int, hashVal:int); -- defining the schema for my own brain
+NgramHashFnMap = [from RelationNgrams r, MinHashCoefs h emit r.ng, r.recordid, h.hashFnNo];
+HashesOfNgrams = select n.ng, n.hashFnNo, hash(n.recordid, m.a, m.b) as hashVal
+                 from NgramHashFnMap n, MinHashCoefs m
+                 where n.hashFnNo = m.hashFnNo;
 
 -- Join the hash computation with the records
--- Goal: each (record, ngram) pair gets matched with its associated hashFnNo and hashVal
--- HashesByRecord = empty(recordid:int, ngram:string, hashFnNo:int, hashVal:int); 
-HashesByRecord = SELECT d.recordid, h.ng, h.hashFnNo, h.hashVal 
-                 FROM Data d, HashesOfNgrams h
-                 WHERE d.ng = h.ng;
+-- Goal: each (record, ngram) pair gets matched with its associated hashFnNo and hashVal 
+HashesByRecord = SELECT r.recordid, h.ng, h.hashFnNo, h.hashVal 
+                 FROM RelationNgrams r, HashesOfNgrams h
+                 WHERE r.ng = h.ng;
+--STORE(h, HashesByRecord, [recordid]);
+--HashesByRecord = SCAN(HashesByRecord);
 
 -- Compute the MinHash signature matrix.
 -- Goal: find the minimum value produced by any hash for a given ngram of a given record.
 --       In other words, find (recordid, hashFnNo) pairs with the lowest hashVal
--- Schema: SignatureMatrix = empty(nrecordid:int, hashFnNo:int, minHashVal:int);
-
 SignatureMatrix = [from HashesByRecord 
                    emit recordid, hashFnNo, min(hashVal) as minHashVal];
-
+-- TODO: Make sure minHashVal is producing correct output
 STORE(SignatureMatrix, SignatureMatrix);
 
 -- Compute the LSH matrix 
--- Goal: partition the signature matrix into m groups of k hash functions
+-- Goal: partition the signature matrix into m groups of k hash functions (l=84, m=16, k=4)
 
 -- TODO: create map from hashfnno -> band
-bandMap = empty(hashFnNo:int, bandNo:int);
+def mod(x, n): x - int(x/n)*n;
+--bandMap = empty(hashFnNo:int, bandNo:int);
 
 
+-- Add band numbers
+-- Goal: Compute which band each hash function belongs to by taking the mod of the hashFnNo
 --LSHMatrix = empty(recordid:int, bandNo:int, hashFnNo:int, minHashVal:int);
-LSHMatrix = select sm.recordid, bm.bandno, sm.hashFnNo, sm.minHashVal 
-            from SignatureMatrix sm, bandMap bm
-            where sm.HashFnNo = bm.hashFnNo;
+-- TODO: REMOVE LITERAL 16
+m = [16];
+BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnNo, sm.minHashVal 
+                  from SignatureMatrix sm;
+
+STORE(BandedSigMatrix, BandedSigMatrix);
+
+uda lshForBand(minhashVals, numLshBuckets): 
+    -- init
+
+    -- update
+
+    -- output
+
+;
+
+LSHMatrix =
+
 
 
 
