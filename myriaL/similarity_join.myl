@@ -37,7 +37,7 @@ STORE (Cora, Cora);
 -- Goal: for each record, get ngrams for each field and add them to the table of (recordid, ngram) pairs
 Data = scan(Cora);
 
-RelationNgrams = SELECT recordid, ngram(Data.author, 5) as ng FROM Data;
+RelationNgrams = SELECT recordid, ngram(Data.title, 5) as ng FROM Data;
 store(RelationNgrams, RelationNgrams);
 
 -- Compute the unique set of ngrams
