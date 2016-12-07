@@ -1,0 +1,14 @@
+------------------------------------------------------------------------------
+-- Testing the correctness of signature matrix computation
+-- Source of data: Leskovec et. al "Mining of Massive Datasets" 2nd ed, Ch.3 
+--    original data p.84
+--    signature matrix p.85 (last matrix on the page)
+------------------------------------------------------------------------------
+
+HashesByRecord = load("http://homes.cs.washington.edu/~kdorosch/mmds_hashesbyrecord.txt", csv(schema(recordid:int, ngrm:string, hashFnNo:int, hashVal:int),
+                skip=1, delimiter="\t"));
+
+-- Compute the MinHash signature matrix, the min value produced by a given hash for any ngram of a record
+SignatureMatrix = [from HashesByRecord 
+                   emit recordid, hashFnNo, min(hashVal) as minHashVal];
+STORE(SignatureMatrix, SignatureMatrix);
