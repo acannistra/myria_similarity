@@ -1,0 +1,30 @@
+------------------------------------------------------------------------------
+-- Testing/fixing weirdness with mod
+-- Source of data: Leskovec et. al "Mining of Massive Datasets" 2nd ed, Ch.3 
+--    original data p.84
+--    signature matrix p.85 (last matrix on the page)
+------------------------------------------------------------------------------
+
+HashesByRecord = load("http://homes.cs.washington.edu/~kdorosch/mmds_hashesbyrecord.txt", csv(schema(recordid:int, ngrm:string, hashFnNo:int, hashVal:int),
+                skip=1, delimiter="\t"));
+
+-- Compute the MinHash signature matrix, the min value produced by a given hash for any ngram of a record
+SignatureMatrix = [from HashesByRecord 
+                   emit recordid, hashFnNo, min(hashVal) as minHashVal];
+STORE(SignatureMatrix, SignatureMatrix);
+
+-- Define mod and lsh (the version which uses mod)
+def mod(x, n): x - int(x/n)*n;
+def lsh_mod(x, nbins): mod(x, nbins);  -- I think the problem was here, using lsh as a column name and function
+
+-- Add band numbers
+BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, 2) as bandNo, sm.hashFnNo, sm.minHashVal 
+                  from SignatureMatrix sm;
+
+STORE(BandedSigMatrix, BandedSigMatrix);
+
+LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 2) as lsh];
+
+LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh from LSH_temp lsht, BandedSigMatrix bsm where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
+
+store(LSHMatrix, LSHMatrix);

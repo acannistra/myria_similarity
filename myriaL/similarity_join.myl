@@ -36,20 +36,14 @@ STORE (Cora, Cora);
 -- Compute ngrams with n=5
 -- Goal: for each record, get ngrams for each field and add them to the table of (recordid, ngram) pairs
 Data = scan(Cora);
-
 RelationNgrams = SELECT recordid, ngram(Data.title, 5) as ng FROM Data;
 store(RelationNgrams, RelationNgrams);
-
--- Compute the unique set of ngrams
--- Goal: rather than compute all possible ngrams, just store/use the ones present in the data
-ObservedNgrams = SELECT DISTINCT r.ng from RelationNgrams as r;
-store(ObservedNgrams, ObservedNgrams);
 
 -- Generate a set of hash functions by defining the coefficients
 -- Goal: generate random integer coefficients for a predetermined number of hash functions
 MinHashCoefs = load("http://homes.cs.washington.edu/~kdorosch/hash_fns_84.txt", csv(schema(hashFnNo:int, a:int, b:int),
                 skip=0, delimiter="\t"));
-STORE(MinHashCoefs, MinHashCoefs);
+--STORE(MinHashCoefs, MinHashCoefs);
 
 -- Define the udf for computing a given minhash based on coeffs
 def hash(x, a, b): a*x + b;
@@ -66,40 +60,34 @@ HashesOfNgrams = select n.ng, n.hashFnNo, hash(n.recordid, m.a, m.b) as hashVal
 HashesByRecord = SELECT r.recordid, h.ng, h.hashFnNo, h.hashVal 
                  FROM RelationNgrams r, HashesOfNgrams h
                  WHERE r.ng = h.ng;
---STORE(h, HashesByRecord, [recordid]);
---HashesByRecord = SCAN(HashesByRecord);
-
+                 
 -- Compute the MinHash signature matrix.
 -- Goal: find the minimum value produced by any hash for a given ngram of a given record.
 --       In other words, find (recordid, hashFnNo) pairs with the lowest hashVal
 SignatureMatrix = [from HashesByRecord 
                    emit recordid, hashFnNo, min(hashVal) as minHashVal];
--- TODO: Make sure minHashVal is producing correct output
-STORE(SignatureMatrix, SignatureMatrix);
+--STORE(SignatureMatrix, SignatureMatrix);
 
 -- Compute the LSH matrix 
 -- Goal: partition the signature matrix into m groups of k hash functions (l=84, m=16, k=4)
 
--- TODO: create map from hashfnno -> band
 def mod(x, n): x - int(x/n)*n;
---bandMap = empty(hashFnNo:int, bandNo:int);
+
+def lsh_mod(x, nbins): mod(x, nbins);
 
 
 -- Add band numbers
 -- Goal: Compute which band each hash function belongs to by taking the mod of the hashFnNo
---LSHMatrix = empty(recordid:int, bandNo:int, hashFnNo:int, minHashVal:int);
 -- TODO: REMOVE LITERAL 16
 m = [16];
 BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnNo, sm.minHashVal 
                   from SignatureMatrix sm;
 
-STORE(BandedSigMatrix, BandedSigMatrix);
+--STORE(BandedSigMatrix, BandedSigMatrix);
 
-def lsh(x):
-  mod(x, 1000);
 
--- TODO: what's up  with mod (fix it)
-LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, sum(bsm.minHashVal) as lsh];
+BandedSigMatrix = scan(BandedSigMatrix);
+LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 1000) as lsh];
 
 LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh from LSH_temp lsht, BandedSigMatrix bsm where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
 
