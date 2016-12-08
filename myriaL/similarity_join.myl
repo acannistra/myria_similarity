@@ -1,7 +1,7 @@
 -- Load the data
 c = LOAD("https://raw.githubusercontent.com/acannistra/myria_similarity/master/data/cora/cora.txt",
             csv(schema(unknown:string,
-            		   pubid:string,
+                   pubid:string,
                        author:string,
                        volume:string,
                        title:string,
@@ -95,17 +95,18 @@ BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnN
 
 STORE(BandedSigMatrix, BandedSigMatrix);
 
-uda lshForBand(minhashVals, numLshBuckets): 
-    -- init
+def lsh(x):
+  mod(x, 1000);
 
-    -- update
+-- TODO: what's up  with mod (fix it)
+LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, sum(bsm.minHashVal) as lsh];
 
-    -- output
+LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh from LSH_temp lsht, BandedSigMatrix bsm where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
 
-;
+store(LSHMatrix, LSHMatrix);
 
-LSHMatrix =
+-- wrong
+groups = select lsma.recordid, lsmb.recordid, count(*) from LSHMatrix lsma, LSHMatrix lsmb where lsma.lsh=lsmb.lsh and lsma.hashFnNo = lsmb.hashFnNo and lsma.minHashVal=lsmb.minHashVal;
 
-
-
+store(groups, groups);
 
