@@ -73,7 +73,8 @@ SignatureMatrix = [from HashesByRecord
 
 def mod(x, n): x - int(x/n)*n;
 
-def lsh_mod(x, nbins): mod(x, nbins);
+--def lsh_mod(x, nbins): mod(x, nbins);
+def lsh_mod(x, nbins): mod(x*281+11, nbins);
 
 
 -- Add band numbers
@@ -86,12 +87,55 @@ BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnN
 --STORE(BandedSigMatrix, BandedSigMatrix);
 
 
-BandedSigMatrix = scan(BandedSigMatrix);
-LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 1000) as lsh];
+/* BandedSigMatrix = scan(BandedSigMatrix); */
+--binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, sum(bsm.minHashVal) as sum_before_lsh];
+binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 4000) as lsh];
+store(binnedLSH, binnedLSH);
+
+
+
+
+
+recordPairsInBins = select m1.recordid as rid1, m2.recordid as rid2, m1.lsh
+                    from binnedLSH m1, binnedLSH m2
+                    where m1.lsh = m2.lsh;
+
+candidatePairs = [from recordPairsInBins rps emit rps.rid1, rps.rid2, count(*)/ *m];
+store(candidatePairs, candidatePairs);
+
+
+-- We are comparing the sensitivity of the candidate pairing procedure in minHash and LSH with respect to the choice and number of hashes
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh 
             from LSH_temp lsht, BandedSigMatrix bsm 
             where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
+            
+            
+
 
 --store(LSHMatrix, LSHMatrix, [lsh]);
 
@@ -99,7 +143,10 @@ LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.
 --LSHMatrix = scan(LSHMatrix);
 -- Have LSHMatrix: recordid, bandNo, hashFnNo, minHashVal, lsh
 -- Goal: intersection of ngrams by bucket
+-- 
 -- from lsh lsh RelationNgrams where a.rid = r1.rid, b.rid = r2.rid, ngrams are same, lsh = lsh emit r1.rid, r2.rid, count(*) as inter]
+
+
 intersection = [from LSHMatrix a, LSHMatrix b, RelationNgrams ra, RelationNgrams rb
                 where a.lsh = b.lsh
                   and a.recordid = ra.recordid
