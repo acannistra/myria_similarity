@@ -89,12 +89,42 @@ BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnN
 BandedSigMatrix = scan(BandedSigMatrix);
 LSH_temp = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 1000) as lsh];
 
-LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh from LSH_temp lsht, BandedSigMatrix bsm where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
+LSHMatrix = select bsm.recordid, bsm.bandNo, bsm.hashFnNo, bsm.minHashVal, lsht.lsh 
+            from LSH_temp lsht, BandedSigMatrix bsm 
+            where bsm.recordid=lsht.recordid and bsm.bandNo = lsht.bandNo;
 
-store(LSHMatrix, LSHMatrix);
+--store(LSHMatrix, LSHMatrix, [lsh]);
+
+------------------------------------
+--LSHMatrix = scan(LSHMatrix);
+-- Have LSHMatrix: recordid, bandNo, hashFnNo, minHashVal, lsh
+-- Goal: intersection of ngrams by bucket
+-- from lsh lsh RelationNgrams where a.rid = r1.rid, b.rid = r2.rid, ngrams are same, lsh = lsh emit r1.rid, r2.rid, count(*) as inter]
+intersection = [from LSHMatrix a, LSHMatrix b, RelationNgrams ra, RelationNgrams rb
+                where a.lsh = b.lsh
+                  and a.recordid = ra.recordid
+                  and b.recordid = rb.recordid
+                  and ra.ng = rb.ng
+                emit ra.recordid as rid1, rb.recordid as rid2, a.lsh, count(*) as inter];
+
+--store(intersection, intersection);
+
+-- count unique ngrams within a record
+distinctNgrams = select distinct recordid, ng from RelationNgrams;
+ngramSetSizes = select recordid, count(ng) as cnt from distinctNgrams;
+
+-- compute jaccard within buckets
+def jaccard(a, b, inter): inter / ((a-b)-inter); -- set difference
+jac = select i.rid1, i.rid2, jaccard(na.cnt, nb.cnt, i.inter) as sim, i.lsh
+      from intersection i, ngramSetSizes na, ngramSetSizes nb
+      where i.rid1 = na.recordid
+        and i.rid2 = nb.recordid;
+store(jac, jac);
+
+--   
 
 -- wrong
-groups = select lsma.recordid, lsmb.recordid, count(*) from LSHMatrix lsma, LSHMatrix lsmb where lsma.lsh=lsmb.lsh and lsma.hashFnNo = lsmb.hashFnNo and lsma.minHashVal=lsmb.minHashVal;
+--groups = select lsma.recordid, lsmb.recordid, count(*) from LSHMatrix lsma, LSHMatrix lsmb where lsma.lsh=lsmb.lsh and lsma.hashFnNo = lsmb.hashFnNo and lsma.minHashVal=lsmb.minHashVal;
 
-store(groups, groups);
+--store(groups, groups);
 
