@@ -41,7 +41,7 @@ store(RelationNgrams, RelationNgrams);
 
 -- Generate a set of hash functions by defining the coefficients
 -- Goal: generate random integer coefficients for a predetermined number of hash functions
-MinHashCoefs = load("http://homes.cs.washington.edu/~kdorosch/hash_fns_84.txt", csv(schema(hashFnNo:int, a:int, b:int),
+MinHashCoefs = load("http://homes.cs.washington.edu/~kdorosch/hash_fns_90.txt", csv(schema(hashFnNo:int, a:int, b:int),
                 skip=0, delimiter="\t"));
 --STORE(MinHashCoefs, MinHashCoefs);
 
@@ -66,7 +66,7 @@ HashesByRecord = SELECT r.recordid, h.ng, h.hashFnNo, h.hashVal
 --       In other words, find (recordid, hashFnNo) pairs with the lowest hashVal
 SignatureMatrix = [from HashesByRecord 
                    emit recordid, hashFnNo, min(hashVal) as minHashVal];
---STORE(SignatureMatrix, SignatureMatrix);
+STORE(SignatureMatrix, SignatureMatrix);
 
 -- Compute the LSH matrix 
 -- Goal: partition the signature matrix into m groups of k hash functions (l=84, m=16, k=4)
@@ -80,16 +80,16 @@ def lsh_mod(x, nbins): mod(x*281+11, nbins);
 -- Add band numbers
 -- Goal: Compute which band each hash function belongs to by taking the mod of the hashFnNo
 -- TODO: REMOVE LITERAL 16
-m = [16];
+m = [9];
 BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnNo, sm.minHashVal 
                   from SignatureMatrix sm;
 
 --STORE(BandedSigMatrix, BandedSigMatrix);
 
 
-/* BandedSigMatrix = scan(BandedSigMatrix); */
+--BandedSigMatrix = scan(BandedSigMatrix);
 --binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, sum(bsm.minHashVal) as sum_before_lsh];
-binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 4000) as lsh];
+binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 1009) as lsh];
 store(binnedLSH, binnedLSH);
 
 
