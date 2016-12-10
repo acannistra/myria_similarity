@@ -1,0 +1,48 @@
+Data = load("http://homes.cs.washington.edu/~kdorosch/twoclass_data.txt", csv(schema(recordid:int, field:string),
+                skip=0, delimiter="\t"));
+
+RelationNgrams = select recordid, ngram(field, 5) as ng from Data;
+
+MinHashCoefs = load("http://homes.cs.washington.edu/~kdorosch/hash_fns_90.txt", csv(schema(hashFnNo:int, a:int, b:int),
+                skip=0, delimiter="\t"));
+
+def hash(x, a, b): a*x + b;
+
+NgramHashFnMap = [from RelationNgrams r, MinHashCoefs h emit r.ng, r.recordid, h.hashFnNo];
+HashesOfNgrams = select n.ng, n.hashFnNo, hash(n.recordid, m.a, m.b) as hashVal
+                 from NgramHashFnMap n, MinHashCoefs m
+                 where n.hashFnNo = m.hashFnNo;
+ 
+ 
+HashesByRecord = SELECT r.recordid, h.ng, h.hashFnNo, h.hashVal 
+                 FROM RelationNgrams r, HashesOfNgrams h
+                 WHERE r.ng = h.ng;
+                
+                
+SignatureMatrix = [from HashesByRecord 
+                   emit recordid, hashFnNo, min(hashVal) as minHashVal];
+--STORE(SignatureMatrix, SignatureMatrix);
+
+
+def mod(x, n): x - int(x/n)*n;
+def lsh_mod(x, nbins): mod(x*281+11, nbins);
+
+
+m = [9];
+BandedSigMatrix = select sm.recordid, mod(sm.hashFnNo, *m) as bandNo, sm.hashFnNo, sm.minHashVal 
+                  from SignatureMatrix sm;
+
+
+binnedLSH = [from BandedSigMatrix bsm emit bsm.recordid, bsm.bandNo, lsh_mod(sum(bsm.minHashVal), 1009) as lsh];
+--store(binnedLSH, binnedLSH);
+
+
+recordPairsInBins = select m1.recordid as rid1, m2.recordid as rid2, m1.lsh
+                    from binnedLSH m1, binnedLSH m2
+                    where m1.lsh = m2.lsh;
+
+candidatePairs = [from recordPairsInBins rps emit rps.rid1, rps.rid2, count(*)];
+store(candidatePairs, candidatePairs);
+
+
+
